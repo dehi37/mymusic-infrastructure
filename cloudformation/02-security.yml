@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Groupes de sécurité ALB, ECS et Database.
+Parameters:
+  Env:
+    Type: String
+Resources:
+  AlbSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: SG pour ALB
+      VpcId: !ImportValue 
+        Fn::Sub: "${Env}-VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+Outputs:
+  AlbSgId:
+    Value: !Ref AlbSG
+    Export:
+      Name: !Sub ${Env}-AlbSgId

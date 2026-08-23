@@ -1,0 +1,17 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Base de données MySQL (RDS / Aurora).
+Parameters:
+  Env:
+    Type: String
+  DBUser:
+    Type: String
+    Default: admin
+  DBPassword:
+    Type: String
+    NoEcho: true
+Resources:
+  DatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub mymusic/${Env}/mysql
+      SecretString: !Sub '{"username":"${DBUser}","password":"${DBPassword}"}'

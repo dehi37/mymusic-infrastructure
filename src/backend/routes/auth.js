@@ -41,7 +41,9 @@ async function register(req, res) {
 
     // Envoyer l'OTP via le microservice mail
     try {
-      const mailResponse = await fetch('http://127.0.0.1:4001/send', {
+	//const mailResponse = await fetch('http://127.0.0.1:4001/send', {
+        const mailUrl = process.env.MAIL_SERVICE_URL || 'http://mail-service:4001/send';
+        const mailResponse = await fetch(mailUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

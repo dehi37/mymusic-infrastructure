@@ -7,7 +7,7 @@
     "start": "node upload.js"
   },
   "dependencies": {
-    "express": "^4.21.2",
+    "express": "^4.22.2",
     "multer": "^1.4.1"
   }
 }

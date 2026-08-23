@@ -12,7 +12,7 @@ const { toggleLike } = require('./src/backend/routes/likes');
 const { handleUpload } = require('./src/backend/routes/upload');
 const { register, verifyOtp, login } = require('./src/backend/routes/auth');
 
-const hostname = '127.0.0.1';
+const hostname = '0.0.0.0';
 const port = process.env.PORT || 3000;
 const frontendDir = path.join(__dirname, 'src', 'frontend');
 const MAX_JSON_BODY_SIZE = 1024 * 1024 * 100;
@@ -94,7 +94,27 @@ function send500(res, err) {
   res.end('500 - Erreur serveur');
 }
 
+// ============================================
+// HEALTH CHECK - AJOUTÉ
+// ============================================
+function handleHealthCheck(req, res) {
+  if (req.method === 'GET' && req.url === '/healthz') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ 
+      status: 'healthy', 
+      timestamp: new Date().toISOString() 
+    }));
+    return true;
+  }
+  return false;
+}
+
 const server = http.createServer(async (req, res) => {
+  // ============================================
+  // HEALTH CHECK - PREMIÈRE ROUTE
+  // ============================================
+  if (handleHealthCheck(req, res)) return;
+
   const requestUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   let pathname = decodeURIComponent(requestUrl.pathname);
   req.query = Object.fromEntries(requestUrl.searchParams.entries());
@@ -116,7 +136,7 @@ const server = http.createServer(async (req, res) => {
       receivedSize += chunk.length;
       if (receivedSize > MAX_JSON_BODY_SIZE) {
         res.writeHead(413, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ success: false, error: 'Payload trop volumineux pour l’API.' }));
+        res.end(JSON.stringify({ success: false, error: 'Payload trop volumineux pour l\'API.' }));
         req.destroy();
         return;
       }
@@ -221,7 +241,7 @@ const server = http.createServer(async (req, res) => {
 
 connectToDatabase()
   .catch((error) => {
-    console.error('Le serveur continue malgré l’échec de connexion à la base de données.', error.message);
+    console.error('Le serveur continue malgré l\'échec de connexion à la base de données.', error.message);
   });
 
 server.listen(port, hostname, () => {

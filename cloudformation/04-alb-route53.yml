@@ -1,0 +1,19 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Route 53 DNS, Health Checks et Failover.
+Parameters:
+  Env:
+    Type: String
+  DomainName:
+    Type: String
+  HostedZoneId:
+    Type: String
+Resources:
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub ${Env}.${DomainName}
+      Type: A
+      TTL: '300'
+      ResourceRecords:
+        - 127.0.0.1

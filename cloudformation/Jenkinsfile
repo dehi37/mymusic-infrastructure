@@ -1,0 +1,87 @@
+pipeline {
+    agent any
+
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev', 'prod'], description: 'Environnement cible')
+        choice(name: 'ACTION', choices: ['DEPLOY', 'DRIFT_DETECT', 'DRIFT_FIX', 'DESTROY'], description: 'Action à exécuter')
+    }
+
+    environment {
+        AWS_REGION     = 'us-east-1'
+        ROLE_ARN       = 'arn:aws:iam::049618906674:role/JenkinsDeploymentRole'
+        DOMAIN_NAME    = 'dehi.click'
+        SUB_DOMAIN     = 'www.mymusic'
+        HOSTED_ZONE_ID = 'Z03387682Z76TKJHXQFER'
+    }
+
+    stages {
+        stage('AWS STS AssumeRole') {
+            steps {
+                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-credentials' ]]) {
+                    script {
+                        def sts = sh(
+                            script: """
+                            aws sts assume-role \
+                              --role-arn ${ROLE_ARN} \
+                              --role-session-name JenkinsSession-${params.ENVIRONMENT} \
+                              --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+                              --output text
+                            """,
+                            returnStdout: true
+                        ).trim().split('\t')
+
+                        env.AWS_ACCESS_KEY_ID     = sts[0]
+                        env.AWS_SECRET_ACCESS_KEY = sts[1]
+                        env.AWS_SESSION_TOKEN     = sts[2]
+                        env.AWS_DEFAULT_REGION    = AWS_REGION
+                    }
+                }
+            }
+        }
+
+        stage('Infrastructure Management') {
+            steps {
+                script {
+                    def envName = params.ENVIRONMENT
+                    def vpcCidr = envName == 'prod' ? '10.0.0.0/16' : '10.1.0.0/16'
+
+                    if (params.ACTION == 'DEPLOY') {
+                        echo "--- DEPLOIEMENT INFRASTRUCTURE (${envName}) ---"
+                        
+                        sh """
+                        aws cloudformation deploy --template-file cloudformation/01-vpc.yml --stack-name mymusic-${envName}-vpc --parameter-overrides Env=${envName} VpcCidr=${vpcCidr} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/02-security.yml --stack-name mymusic-${envName}-security --parameter-overrides Env=${envName} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/03-database.yml --stack-name mymusic-${envName}-db --parameter-overrides Env=${envName} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/04-alb-route53.yml --stack-name mymusic-${envName}-route53 --parameter-overrides Env=${envName} DomainName=${DOMAIN_NAME} HostedZoneId=${HOSTED_ZONE_ID} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/05-ecs-fargate.yml --stack-name mymusic-${envName}-ecs --parameter-overrides Env=${envName} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/06-lambda-sqs.yml --stack-name mymusic-${envName}-lambda --parameter-overrides Env=${envName} --no-fail-on-empty-changeset
+                        """
+
+                    } else if (params.ACTION == 'DRIFT_DETECT') {
+                        echo "--- DETECTION DE DERIVE (DRIFT) ---"
+                        sh """
+                        DRIFT_ID=\$(aws cloudformation detect-stack-drift --stack-name mymusic-${envName}-vpc --query 'StackDriftDetectionId' --output text)
+                        sleep 10
+                        aws cloudformation describe-stack-drift-detection-status --stack-drift-detection-id \$DRIFT_ID
+                        """
+
+                    } else if (params.ACTION == 'DRIFT_FIX') {
+                        echo "--- CORRECTION DE DERIVE (RE-DEPLOY) ---"
+                        sh "aws cloudformation deploy --template-file cloudformation/01-vpc.yml --stack-name mymusic-${envName}-vpc --parameter-overrides Env=${envName} VpcCidr=${vpcCidr}"
+
+                    } else if (params.ACTION == 'DESTROY') {
+                        echo "--- SUPPRESSION COMPLETE DE L'INFRASTRUCTURE (${envName}) ---"
+                        sh """
+                        aws cloudformation delete-stack --stack-name mymusic-${envName}-lambda
+                        aws cloudformation delete-stack --stack-name mymusic-${envName}-ecs
+                        aws cloudformation delete-stack --stack-name mymusic-${envName}-route53
+                        aws cloudformation delete-stack --stack-name mymusic-${envName}-db
+                        aws cloudformation delete-stack --stack-name mymusic-${envName}-security
+                        aws cloudformation delete-stack --stack-name mymusic-${envName}-vpc
+                        """
+                    }
+                }
+            }
+        }
+    }
+}

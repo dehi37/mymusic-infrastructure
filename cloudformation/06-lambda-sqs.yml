@@ -1,0 +1,10 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Service d'arrière-plan Lambda et SQS.
+Parameters:
+  Env:
+    Type: String
+Resources:
+  ProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub mymusic-queue-${Env}
