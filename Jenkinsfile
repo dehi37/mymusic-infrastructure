@@ -23,7 +23,7 @@ pipeline {
                     } else {
                         error "Branche non autorisée : ${env.BRANCH_NAME}"
                     }
-                    echo "=== DEPLOIEMENT AUTOMATIQUE SUR L'ENVIRONNEMENT : ${env.TARGET_ENV} ==="
+                    echo "=== DEPLOIEMENT AUTOMATIQUE EN COURS POUR : ${env.TARGET_ENV} ==="
                 }
             }
         }
@@ -52,17 +52,17 @@ pipeline {
             }
         }
 
-        stage('ECR Setup & Docker Build/Push') {
+        stage('ECR Setup & Build/Push Docker Image') {
             steps {
                 script {
                     sh """
-                    # 1. Créer le dépôt ECR s'il n'existe pas
+                    # 1. Vérification et création du dépôt ECR
                     aws ecr describe-repositories --repository-names ${ECR_REPO_NAME} || aws ecr create-repository --repository-name ${ECR_REPO_NAME}
 
-                    # 2. Authentification Docker auprès d'ECR
+                    # 2. Authentification du démon Docker sur AWS ECR
                     aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
 
-                    # 3. Build, Tag et Push de l'image Docker
+                    # 3. Build, Tag et Push de l'image applicative
                     docker build -t ${ECR_REPO_NAME}:${env.TARGET_ENV} .
                     docker tag ${ECR_REPO_NAME}:${env.TARGET_ENV} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${env.TARGET_ENV}
                     docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME}:${env.TARGET_ENV}
@@ -71,22 +71,22 @@ pipeline {
             }
         }
 
-        stage('Deploy CloudFormation') {
+        stage('Deploy CloudFormation Infrastructure') {
             steps {
                 withCredentials([string(credentialsId: 'db-password-secret', variable: 'DB_PASSWORD')]) {
                     sh '''
                     aws cloudformation deploy --template-file cloudformation/01-vpc.yml --stack-name mymusic-${TARGET_ENV}-vpc --parameter-overrides Env=${TARGET_ENV} VpcCidr=${VPC_CIDR} --no-fail-on-empty-changeset
                     aws cloudformation deploy --template-file cloudformation/02-security.yml --stack-name mymusic-${TARGET_ENV}-security --parameter-overrides Env=${TARGET_ENV} --no-fail-on-empty-changeset
                     aws cloudformation deploy --template-file cloudformation/03-database.yml --stack-name mymusic-${TARGET_ENV}-db --parameter-overrides Env=${TARGET_ENV} DBPassword=$DB_PASSWORD --no-fail-on-empty-changeset
-                    aws cloudformation deploy --template-file cloudformation/04-alb-route53.yml --stack-name mymusic-${TARGET_ENV}-route53 --parameter-overrides Env=${TARGET_ENV} DomainName=${DOMAIN_NAME} HostedZoneId=${HOSTED_ZONE_ID} --no-fail-on-empty-changeset
-                    aws cloudformation deploy --template-file cloudformation/05-ecs-fargate.yml --stack-name mymusic-${TARGET_ENV}-ecs --parameter-overrides Env=${TARGET_ENV} --no-fail-on-empty-changeset
-                    aws cloudformation deploy --template-file cloudformation/06-lambda-sqs.yml --stack-name mymusic-${TARGET_ENV}-lambda --parameter-overrides Env=${TARGET_ENV} --no-fail-on-empty-changeset
+                    aws cloudformation deploy --template-file cloudformation/04-alb-route53.yml --stack-name mymusic-${TARGET_ENV}-route53 --parameter-overrides Env=${TARGET_ENV} DomainName=${DOMAIN_NAME} HostedZoneId=${HOSTED_ZONE_ID} --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset
+                    aws cloudformation deploy --template-file cloudformation/05-ecs-fargate.yml --stack-name mymusic-${TARGET_ENV}-ecs --parameter-overrides Env=${TARGET_ENV} EcrImageUri=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO_NAME} --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset
+                    aws cloudformation deploy --template-file cloudformation/06-lambda-sqs.yml --stack-name mymusic-${TARGET_ENV}-lambda --parameter-overrides Env=${TARGET_ENV} --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --no-fail-on-empty-changeset
                     '''
                 }
             }
         }
 
-        stage('Deploy ECS Service Force Update') {
+        stage('Force New ECS Deployment') {
             steps {
                 sh '''
                 aws ecs update-service --cluster mymusic-cluster-${TARGET_ENV} --service mymusic-service-${TARGET_ENV} --force-new-deployment --region ${AWS_REGION}

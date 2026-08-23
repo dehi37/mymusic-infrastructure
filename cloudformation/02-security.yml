@@ -1,22 +1,61 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Groupes de sécurité ALB, ECS et Database.
+Description: "Groupes de sécurité AWS pour ALB, ECS et RDS"
+
 Parameters:
   Env:
     Type: String
+
 Resources:
-  AlbSG:
+  ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: SG pour ALB
-      VpcId: !ImportValue 
-        Fn::Sub: "${Env}-VpcId"
+      GroupDescription: "Autorise le trafic HTTP et HTTPS entrant depuis le web"
+      VpcId: !ImportValue
+        'Fn::Sub': "mymusic-${Env}-VpcId"
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 80
           ToPort: 80
           CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Autorise le trafic entrant sur les conteneurs ECS uniquement depuis l ALB"
+      VpcId: !ImportValue
+        'Fn::Sub': "mymusic-${Env}-VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+
+  DBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Autorise l acces a la base de donnees PostgreSQL uniquement depuis ECS"
+      VpcId: !ImportValue
+        'Fn::Sub': "mymusic-${Env}-VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref ECSSecurityGroup
+
 Outputs:
-  AlbSgId:
-    Value: !Ref AlbSG
+  ALBSecurityGroup:
+    Value: !Ref ALBSecurityGroup
     Export:
-      Name: !Sub ${Env}-AlbSgId
+      Name: !Sub "mymusic-${Env}-ALBSecurityGroup"
+  ECSSecurityGroup:
+    Value: !Ref ECSSecurityGroup
+    Export:
+      Name: !Sub "mymusic-${Env}-ECSSecurityGroup"
+  DBSecurityGroup:
+    Value: !Ref DBSecurityGroup
+    Export:
+      Name: !Sub "mymusic-${Env}-DBSecurityGroup"

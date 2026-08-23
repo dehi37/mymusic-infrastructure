@@ -1,17 +1,47 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Base de données MySQL (RDS / Aurora).
+Description: "Base de données relationnelle AWS RDS PostgreSQL"
+
 Parameters:
   Env:
     Type: String
-  DBUser:
-    Type: String
-    Default: admin
   DBPassword:
     Type: String
     NoEcho: true
+
 Resources:
-  DatabaseSecret:
-    Type: AWS::SecretsManager::Secret
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
     Properties:
-      Name: !Sub mymusic/${Env}/mysql
-      SecretString: !Sub '{"username":"${DBUser}","password":"${DBPassword}"}'
+      DBSubnetGroupDescription: "Sous-reseaux pour la base de donnees RDS"
+      SubnetIds:
+        - !ImportValue
+          'Fn::Sub': "mymusic-${Env}-PrivateSubnet1"
+        - !ImportValue
+          'Fn::Sub': "mymusic-${Env}-PrivateSubnet2"
+
+  DBInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub "mymusic-db-${Env}"
+      Engine: postgres
+      EngineVersion: "15"
+      DBInstanceClass: db.t3.micro
+      AllocatedStorage: "20"
+      MasterUsername: mymusicuser
+      MasterUserPassword: !Ref DBPassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VPCSecurityGroups:
+        - !ImportValue
+          'Fn::Sub': "mymusic-${Env}-DBSecurityGroup"
+      PubliclyAccessible: false
+      DeletionPolicy: Snapshot
+
+Outputs:
+  DBEndpoint:
+    Value: !GetAtt DBInstance.Endpoint.Address
+    Export:
+      Name: !Sub "mymusic-${Env}-DBEndpoint"
+  DBPort:
+    Value: !GetAtt DBInstance.Endpoint.Port
+    Export:
+      Name: !Sub "mymusic-${Env}-DBPort"

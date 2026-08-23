@@ -1,10 +1,70 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Service d'arrière-plan Lambda et SQS.
+Description: "Microservices Serverless : Lambda, File SQS et Trigger d'évènements"
+
 Parameters:
   Env:
     Type: String
+
 Resources:
-  ProcessingQueue:
+  MicroserviceQueue:
     Type: AWS::SQS::Queue
     Properties:
-      QueueName: !Sub mymusic-queue-${Env}
+      QueueName: !Sub "mymusic-queue-${Env}"
+      VisibilityTimeout: 300
+      MessageRetentionPeriod: 864000
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "mymusic-lambda-role-${Env}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole
+
+  MicroserviceLambdaFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "mymusic-processor-${Env}"
+      Handler: index.handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Runtime: nodejs18.x
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          exports.handler = async (event) => {
+              console.log("Événement reçu par le microservice MyMusic :", JSON.stringify(event, null, 2));
+              return {
+                  statusCode: 200,
+                  body: JSON.stringify({ message: "Microservice MyMusic exécuté avec succès !" }),
+              };
+          };
+      Environment:
+        Variables:
+          ENV: !Ref Env
+          QUEUE_URL: !Ref MicroserviceQueue
+
+  LambdaSQSEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      EventSourceArn: !GetAtt MicroserviceQueue.Arn
+      FunctionName: !Ref MicroserviceLambdaFunction
+      Enabled: true
+
+Outputs:
+  LambdaFunctionArn:
+    Value: !GetAtt MicroserviceLambdaFunction.Arn
+    Export:
+      Name: !Sub "mymusic-${Env}-LambdaArn"
+  SQSQueueUrl:
+    Value: !Ref MicroserviceQueue
+    Export:
+      Name: !Sub "mymusic-${Env}-SQSUrl"
