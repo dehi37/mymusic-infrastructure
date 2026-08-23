@@ -2,12 +2,16 @@ pipeline {
     agent { label 'built-in' }
 
     environment {
-        AWS_REGION     = 'us-east-1'
-        AWS_ACCOUNT_ID = '049618906674'
-        ROLE_ARN       = 'arn:aws:iam::049618906674:role/JenkinsDeploymentRole'
-        DOMAIN_NAME    = 'dehi.click'
-        HOSTED_ZONE_ID = 'Z03387682Z76TKJHXQFER'
-        ECR_REPO_NAME  = 'mymusic-app'
+        AWS_REGION         = 'us-east-1'
+        AWS_ACCOUNT_ID     = '049618906674'
+        ROLE_ARN           = 'arn:aws:iam::049618906674:role/JenkinsDeploymentRole'
+        DOMAIN_NAME        = 'dehi.click'
+        HOSTED_ZONE_ID     = 'Z03387682Z76TKJHXQFER'
+        ECR_REPO_NAME      = 'mymusic-app'
+        
+        // Timeout et retries pour empêcher la perte de connexion pendant les créations DNS/ACM
+        AWS_CLIENT_TIMEOUT = '600'
+        AWS_MAX_ATTEMPTS   = '10'
     }
 
     stages {
