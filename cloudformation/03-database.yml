@@ -21,10 +21,11 @@ Resources:
 
   DBInstance:
     Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
     Properties:
       DBInstanceIdentifier: !Sub "mymusic-db-${Env}"
       Engine: postgres
-      EngineVersion: "15"
+      EngineVersion: "15.7"
       DBInstanceClass: db.t3.micro
       AllocatedStorage: "20"
       MasterUsername: mymusicuser
@@ -34,7 +35,6 @@ Resources:
         - !ImportValue
           'Fn::Sub': "mymusic-${Env}-DBSecurityGroup"
       PubliclyAccessible: false
-      DeletionPolicy: Snapshot
 
 Outputs:
   DBEndpoint:
