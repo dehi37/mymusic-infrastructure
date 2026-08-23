@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        docker {
+            image 'amazon/aws-cli:latest'
+            args '-u 0' // Pour s'exécuter avec les privilèges requis si nécessaire
+        }
+    }
 
     environment {
         AWS_REGION     = 'us-east-1'
