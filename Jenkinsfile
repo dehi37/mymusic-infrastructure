@@ -29,7 +29,7 @@ pipeline {
 
         stage('AWS STS AssumeRole') {
             steps {
-                withCredentials([[ $class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-jenkins-credentials' ]]) {
+                withCredentials([usernamePassword(credentialsId: 'aws-jenkins-credentials', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     script {
                         def sts = sh(
                             script: """
