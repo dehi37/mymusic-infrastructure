@@ -153,20 +153,20 @@ Outputs:
   VpcId:
     Value: !Ref VPC
     Export:
-      Name: !Sub "${Env}-VpcId"
+      Name: !Sub "mymusic-${Env}-VpcId"
   PublicSubnet1:
     Value: !Ref PublicSubnet1
     Export:
-      Name: !Sub "${Env}-PublicSubnet1"
+      Name: !Sub "mymusic-${Env}-PublicSubnet1"
   PublicSubnet2:
     Value: !Ref PublicSubnet2
     Export:
-      Name: !Sub "${Env}-PublicSubnet2"
+      Name: !Sub "mymusic-${Env}-PublicSubnet2"
   PrivateSubnet1:
     Value: !Ref PrivateSubnet1
     Export:
-      Name: !Sub "${Env}-PrivateSubnet1"
+      Name: !Sub "mymusic-${Env}-PrivateSubnet1"
   PrivateSubnet2:
     Value: !Ref PrivateSubnet2
     Export:
-      Name: !Sub "${Env}-PrivateSubnet2"
+      Name: !Sub "mymusic-${Env}-PrivateSubnet2"
