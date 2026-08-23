@@ -1,7 +1,5 @@
 pipeline {
-    agent {
-        label 'built-in'
-    }
+    agent { label 'built-in' }
 
     environment {
         AWS_REGION     = 'us-east-1'
@@ -55,15 +53,17 @@ pipeline {
 
         stage('Deploy CloudFormation') {
             steps {
-                script {
-                    sh """
-                    aws cloudformation deploy --template-file cloudformation/01-vpc.yml --stack-name mymusic-${env.TARGET_ENV}-vpc --parameter-overrides Env=${env.TARGET_ENV} VpcCidr=${env.VPC_CIDR} --no-fail-on-empty-changeset
-                    aws cloudformation deploy --template-file cloudformation/02-security.yml --stack-name mymusic-${env.TARGET_ENV}-security --parameter-overrides Env=${env.TARGET_ENV} --no-fail-on-empty-changeset
-                    aws cloudformation deploy --template-file cloudformation/03-database.yml --stack-name mymusic-${env.TARGET_ENV}-db --parameter-overrides Env=${env.TARGET_ENV} --no-fail-on-empty-changeset
-                    aws cloudformation deploy --template-file cloudformation/04-alb-route53.yml --stack-name mymusic-${env.TARGET_ENV}-route53 --parameter-overrides Env=${env.TARGET_ENV} DomainName=${DOMAIN_NAME} HostedZoneId=${HOSTED_ZONE_ID} --no-fail-on-empty-changeset
-                    aws cloudformation deploy --template-file cloudformation/05-ecs-fargate.yml --stack-name mymusic-${env.TARGET_ENV}-ecs --parameter-overrides Env=${env.TARGET_ENV} --no-fail-on-empty-changeset
-                    aws cloudformation deploy --template-file cloudformation/06-lambda-sqs.yml --stack-name mymusic-${env.TARGET_ENV}-lambda --parameter-overrides Env=${env.TARGET_ENV} --no-fail-on-empty-changeset
-                    """
+                withCredentials([string(credentialsId: 'db-password-secret', variable: 'DB_PASSWORD')]) {
+                    script {
+                        sh """
+                        aws cloudformation deploy --template-file cloudformation/01-vpc.yml --stack-name mymusic-${env.TARGET_ENV}-vpc --parameter-overrides Env=${env.TARGET_ENV} VpcCidr=${env.VPC_CIDR} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/02-security.yml --stack-name mymusic-${env.TARGET_ENV}-security --parameter-overrides Env=${env.TARGET_ENV} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/03-database.yml --stack-name mymusic-${env.TARGET_ENV}-db --parameter-overrides Env=${env.TARGET_ENV} DBPassword=${DB_PASSWORD} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/04-alb-route53.yml --stack-name mymusic-${env.TARGET_ENV}-route53 --parameter-overrides Env=${env.TARGET_ENV} DomainName=${DOMAIN_NAME} HostedZoneId=${HOSTED_ZONE_ID} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/05-ecs-fargate.yml --stack-name mymusic-${env.TARGET_ENV}-ecs --parameter-overrides Env=${env.TARGET_ENV} --no-fail-on-empty-changeset
+                        aws cloudformation deploy --template-file cloudformation/06-lambda-sqs.yml --stack-name mymusic-${env.TARGET_ENV}-lambda --parameter-overrides Env=${env.TARGET_ENV} --no-fail-on-empty-changeset
+                        """
+                    }
                 }
             }
         }
