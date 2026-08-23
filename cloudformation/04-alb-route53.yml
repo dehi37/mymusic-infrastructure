@@ -1,5 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Route 53 DNS, Health Checks et Failover.
+Description: "ALB HTTPS, Certificat ACM et Route 53 Failover Alias"
+
 Parameters:
   Env:
     Type: String
@@ -7,13 +8,130 @@ Parameters:
     Type: String
   HostedZoneId:
     Type: String
+
 Resources:
-  DNSRecord:
+  # 1. Certificat SSL/TLS ACM
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Sub "${Env}.mymusic.${DomainName}"
+      SubjectAlternativeNames:
+        - !Sub "www.mymusic.${DomainName}"
+        - !Sub "${DomainName}"
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Sub "${Env}.mymusic.${DomainName}"
+          HostedZoneId: !Ref HostedZoneId
+
+  # 2. Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub "mymusic-alb-${Env}"
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !ImportValue
+          'Fn::Sub': "mymusic-${Env}-PublicSubnet1"
+        - !ImportValue
+          'Fn::Sub': "mymusic-${Env}-PublicSubnet2"
+      SecurityGroups:
+        - !ImportValue
+          'Fn::Sub': "mymusic-${Env}-ALBSecurityGroup"
+
+  # 3. Target Group avec Health Check
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub "mymusic-tg-${Env}"
+      Port: 80
+      Protocol: HTTP
+      VpcId: !ImportValue
+        'Fn::Sub': "mymusic-${Env}-VpcId"
+      TargetType: ip
+      HealthCheckPath: "/"
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 5
+
+  # 4. Listener HTTPS (Port 443)
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref Certificate
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
+
+  # 5. Redirection HTTP (80) -> HTTPS (443)
+  HTTPListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: "443"
+            StatusCode: HTTP_311
+
+  # 6. Route 53 Health Check pour le Failover
+  Route53HealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Properties:
+      HealthCheckConfig:
+        Type: HTTP
+        FullyQualifiedDomainName: !GetAtt ApplicationLoadBalancer.DNSName
+        Port: 80
+        ResourcePath: "/"
+        RequestInterval: 30
+        FailureThreshold: 3
+
+  # 7. Route 53 Record Set (Failover Strategy)
+  FailoverRecordSet:
     Type: AWS::Route53::RecordSet
     Properties:
       HostedZoneId: !Ref HostedZoneId
-      Name: !Sub ${Env}.${DomainName}
+      Name: !Sub "www.mymusic.${DomainName}"
       Type: A
-      TTL: '300'
-      ResourceRecords:
-        - 127.0.0.1
+      Failover: !If [ IsProd, "PRIMARY", "SECONDARY" ]
+      SetIdentifier: !Sub "mymusic-${Env}-failover"
+      HealthCheckId: !Ref Route53HealthCheck
+      AliasTarget:
+        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        EvaluateTargetHealth: true
+
+  # 8. Route 53 Record Set Simple (dev.dehi.click / prod.dehi.click)
+  SimpleRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${Env}.mymusic.${DomainName}"
+      Type: A
+      AliasTarget:
+        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        EvaluateTargetHealth: false
+
+Conditions:
+  IsProd: !Equals [ !Ref Env, "prod" ]
+
+Outputs:
+  ALBDNSName:
+    Description: "Nom DNS du Load Balancer"
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub "mymusic-${Env}-ALBDNSName"
+  TargetGroupArn:
+    Description: "ARN du Target Group"
+    Value: !Ref TargetGroup
+    Export:
+      Name: !Sub "mymusic-${Env}-TargetGroupArn"
